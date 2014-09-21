@@ -1,0 +1,80 @@
+---
+title: "Predictive Modeling To Classify Fitness Excercise Technique"
+date: "Saturday, September 20, 2014"
+output: html_document
+---
+
+## Introduction
+
+Accelerometer data is used to build a predictive model of whether an excercise is performed with the correct technique. More background and the data set employed can be found in the reference below.
+
+## Load 
+
+```{r cache=T}
+library(caret)
+library(parallel)
+library(doParallel)
+
+pml.train <- read.csv("pml-training.csv")
+pml.test <- read.csv("pml-testing.csv")
+```
+
+## Exploration
+
+Variables within the data set fell into two immediatly obvious groups. Those with sparse data and those with dense data. Only relevant, dense variables were selected as input for the model.
+
+```{r cache=T}
+#pml.train
+vars <- c("roll_belt", "pitch_belt", "yaw_belt", "pitch_arm", "yaw_arm", "roll_arm", "gyros_belt_x", "gyros_belt_y", "gyros_belt_z", "accel_belt_x", "accel_belt_y", "accel_belt_z", "magnet_belt_x", "magnet_belt_y", "magnet_belt_z", "gyros_arm_x", "gyros_arm_y", "gyros_arm_z", "accel_arm_x", "accel_arm_y", "accel_arm_z", "magnet_arm_x", "magnet_arm_y", "magnet_arm_z", "roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell", "classe")
+```
+
+## Partition
+
+The training data set was split into training and testing sets with a 70:30 split.
+
+```{r cache=T}
+partition.index <- createDataPartition(pml.train$classe, p = 0.7, list = FALSE);
+train.partition <- pml.train[partition.index, ];
+test.partition <- pml.train[-partition.index, ];
+
+test.partition <- test.partition[, vars]
+train.partition <- train.partition[, vars]
+classe.col = train.partition$classe
+train.partition <- data.frame(lapply(train.partition[,-28], function(x) as.numeric(x)))
+train.partition$classe = classe.col
+```
+
+## Model 
+
+A random forest was chosen as the model becuase they are known to have good behavior across a wide variety of problems. The calculations were parallelized to decrease processing time. Running on 1, 2, and 4 cores respectivly led to approximate processing times of 60, 30, and 15 minutes on an inexpensive desktop processor (AMD A10-5800K) with cooresponding CPU utilization of approximately 25, 50 and 100 percent. Preprocessing using PCA did not improve classification with the test data set but did speed processing by around 50%.
+
+```{r cache=T}
+set.seed(4444)
+ptm <- proc.time()
+registerDoParallel(4)
+#model <- train(train.partition$classe~., preProcess = "pca", method = "rf", data = train.partition)
+model <- train(train.partition$classe~., method = "rf", data = train.partition)
+stopImplicitCluster()
+proc.time() - ptm
+
+model
+```
+
+## Validation 
+
+Out of sample error was approximately 2%, more than accurate enough to classify the submission data set.
+
+```{r cache=T}
+prediction <- predict(model, test.partition)
+confusionMatrix(prediction, test.partition$classe)
+
+submission <- predict(model, pml.test)
+```
+
+## References
+
+1. Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013
+
+
+
+
